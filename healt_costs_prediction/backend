@@ -1,0 +1,83 @@
+import tensorflow as tf
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pandas as pd
+import numpy as np
+
+# Initialize the Flask application
+app = Flask(__name__)
+# Enable Cross-Origin Resource Sharing (CORS)
+CORS(app)
+
+# Load your trained model from the SavedModel format
+try:
+    # Use TFSMLayer for compatibility with newer Keras versions
+    model = tf.keras.layers.TFSMLayer('health_cost_predictor', call_endpoint='serving_default')
+    print("Model loaded successfully.")
+except (IOError, ImportError, ValueError) as e:
+    print(f"Error loading model: {e}")
+    print("Ensure the 'health_cost_predictor' directory (created by model.export()) is in the same location as this script.")
+    model = None
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if model is None:
+        return jsonify({'error': 'Model failed to load. Please check the server logs.'}), 500
+
+    try:
+        # Get the JSON data from the request
+        data = request.get_json()
+
+        # --- Preprocess the input data to match the new notebook ---
+        # Create a DataFrame from the input
+        input_df = pd.DataFrame([data])
+        
+        # Convert numeric columns to the correct types
+        input_df['age'] = input_df['age'].astype(int)
+        input_df['bmi'] = input_df['bmi'].astype(float)
+        input_df['children'] = input_df['children'].astype(int)
+
+        # Feature Engineering: Create the bmi_smoker interaction term
+        input_df['bmi_smoker'] = input_df['bmi'] * (input_df['smoker'] == 'yes').astype(int)
+        
+        # One-hot encode categorical features, matching the notebook
+        input_df['sex_male'] = (input_df['sex'] == 'male').astype(float)
+        input_df['smoker_yes'] = (input_df['smoker'] == 'yes').astype(float)
+        
+        regions = ['northwest', 'southeast', 'southwest'] # northeast is the dropped base case
+        for region in regions:
+            input_df[f'region_{region}'] = (input_df['region'] == region).astype(float)
+        
+        # Define the exact order of features your new model was trained on
+        # This must match the columns in X_train from your notebook
+        feature_order = [
+            'age', 'bmi', 'children', 'bmi_smoker', 'sex_male', 'smoker_yes',
+            'region_northwest', 'region_southeast', 'region_southwest'
+        ]
+        
+        # Select and reorder columns to match the model's training input
+        final_df = input_df[feature_order].astype('float32')
+
+        # Convert dataframe to a tensor
+        input_tensor = tf.convert_to_tensor(final_df.values, dtype=tf.float32)
+
+        # --- Make a prediction ---
+        # The output of TFSMLayer is a dictionary of tensors
+        prediction_output = model(input_tensor)
+        prediction = list(prediction_output.values())[0]
+        
+        # Extract the scalar prediction value
+        predicted_cost = float(prediction[0][0])
+
+        # Return the prediction as JSON
+        return jsonify({'predicted_cost': predicted_cost})
+
+    except Exception as e:
+        # Return a detailed error message for easier debugging
+        return jsonify({'error': f'An error occurred during prediction: {str(e)}'}), 400
+
+# Run the app
+if __name__ == '__main__':
+    # Use 0.0.0.0 to make it accessible on your local network
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
