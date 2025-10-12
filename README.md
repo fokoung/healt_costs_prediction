@@ -1,7 +1,3 @@
-Sure — here’s your cleaned, professional `README.md` in plain text format (no emojis, no markdown formatting):
-
----
-
 # Health Cost Predictor
 
 ## Overview
