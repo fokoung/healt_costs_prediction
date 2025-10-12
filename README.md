@@ -1,5 +1,5 @@
 # Health Cost Predictor
-![Application Screenshot](screnn.png)
+![Application Screenshot](health.png)
 ## Overview
 
 Health Cost Predictor is a full-stack web application that predicts annual health insurance costs based on user inputs. It uses a deep learning regression model built with TensorFlow and Keras, served through a Flask backend, and presented via a modern, responsive HTML + Tailwind CSS frontend.
